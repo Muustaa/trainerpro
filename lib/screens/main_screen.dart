@@ -14,12 +14,14 @@ import '../theme/app_theme.dart';
 import '../widgets/plate_calculator_dialog.dart';
 import '../widgets/animated_widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:permission_handler/permission_handler.dart';
+import '../data/exercise_images.dart';
 import 'auth_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -277,20 +279,7 @@ class _MainScreenState extends State<MainScreen>
   // Phase 2: Pinned Notes
   Map<String, String> _exerciseNotes = {};
 
-  Color get _cardColor {
-    switch (widget.currentTheme) {
-      case AppTheme.cyberNeon:
-        return const Color(0xFF121212);
-      case AppTheme.crimsonBlood:
-        return const Color(0xFF2A1515);
-      case AppTheme.toxicGreen:
-        return const Color(0xFF051105);
-      case AppTheme.solarFlare:
-        return const Color(0xFF1A0F00);
-      default:
-        return const Color(0xFF0F172A);
-    }
-  }
+  Color get _cardColor => Colors.transparent;
 
   // --- CICLO DE VIDA ---
   @override
@@ -2316,12 +2305,6 @@ class _MainScreenState extends State<MainScreen>
       },
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 60, 24, 20),
-        decoration: BoxDecoration(
-          color: _cardColor.withValues(alpha: 0.8),
-          border: const Border(
-            bottom: BorderSide(color: Colors.white10, width: 0.3),
-          ),
-        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -2652,16 +2635,9 @@ class _MainScreenState extends State<MainScreen>
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color: _cardColor,
+                color: Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -4518,8 +4494,10 @@ class _MainScreenState extends State<MainScreen>
         ReorderableListView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          onReorderItem: (oldIndex, newIndex) =>
-              _reorderExercises(name, oldIndex, newIndex),
+          onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) newIndex--;
+                        _reorderExercises(name, oldIndex, newIndex);
+                      },
           children: [
             ...(_exerciseDb[name] ?? []).map(
               (ex) => ListTile(
@@ -4646,75 +4624,328 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _promptAddExercise(String group) {
-    String selectedFromSearch = "";
     showDialog(
       context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('AÑADIR EJERCICIO'),
-          backgroundColor: _cardColor,
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Autocomplete<String>(
-                optionsBuilder: (TextEditingValue value) {
-                  if (value.text == '') {
-                    return const Iterable<String>.empty();
-                  }
-                  return _globalExerciseList.where((String option) {
-                    return option.contains(value.text.toUpperCase());
-                  });
-                },
-                onSelected: (String selection) =>
-                    selectedFromSearch = selection,
-                fieldViewBuilder:
-                    (context, controller, focusNode, onFieldSubmitted) {
-                      return TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Escribe ej: "PRESS"',
-                          hintStyle: const TextStyle(color: Colors.white24),
-                          enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: _accentColor.withValues(alpha: 0.3),
-                            ),
-                          ),
-                        ),
-                        onChanged: (v) => selectedFromSearch = v.toUpperCase(),
-                      );
-                    },
+      builder: (c) => AlertDialog(
+        backgroundColor: _cardColor,
+        title: const Text('AÑADIR EJERCICIO'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(LucideIcons.database, color: _accentColor, size: 20),
+              title: const Text(
+                'BASE DE DATOS',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text(
-                'CANCELAR',
-                style: TextStyle(color: Colors.white24),
+              subtitle: const Text(
+                'Buscar ejercicio con imagen',
+                style: TextStyle(color: Colors.white38, fontSize: 10),
               ),
-            ),
-            TextButton(
-              onPressed: () {
-                if (selectedFromSearch.isNotEmpty) {
-                  setState(() {
-                    _exerciseDb[group] ??= [];
-                    if (!_exerciseDb[group]!.contains(selectedFromSearch)) {
-                      _exerciseDb[group]!.add(selectedFromSearch);
-                    }
-                    _saveConfig();
-                  });
-                }
+              onTap: () {
                 Navigator.pop(c);
+                _promptFromDatabase(group);
               },
-              child: Text('AÑADIR', style: TextStyle(color: _accentColor)),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+            ListTile(
+              leading: Icon(LucideIcons.pencil, color: _accentColor, size: 20),
+              title: const Text(
+                'ESCRIBIR EJERCICIO',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              subtitle: const Text(
+                'Escribir nombre manualmente',
+                style: TextStyle(color: Colors.white38, fontSize: 10),
+              ),
+              onTap: () {
+                Navigator.pop(c);
+                _promptCustomExercise(group);
+              },
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('CANCELAR', style: TextStyle(color: Colors.white24)),
+          ),
+        ],
       ),
     );
+  }
+
+  void _promptCustomExercise(String group) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: _cardColor,
+        title: const Text('ESCRIBIR EJERCICIO'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Nombre del ejercicio',
+            hintStyle: const TextStyle(color: Colors.white24),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _accentColor.withValues(alpha: 0.3)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('CANCELAR', style: TextStyle(color: Colors.white24)),
+          ),
+          TextButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) {
+                String name = ctrl.text.trim().toUpperCase();
+                setState(() {
+                  _exerciseDb[group] ??= [];
+                  if (!_exerciseDb[group]!.contains(name)) {
+                    _exerciseDb[group]!.add(name);
+                  }
+                  _saveConfig();
+                });
+              }
+              Navigator.pop(c);
+            },
+            child: Text('AÑADIR', style: TextStyle(color: _accentColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _promptFromDatabase(String group) {
+    String searchQuery = '';
+    String selectedGroup = 'TODOS';
+
+    final allMuscleGroups = <String>{
+      for (var entry in _globalExerciseList) _getMuscleGroupForExercise(entry),
+    }.where((g) => g.isNotEmpty).toList();
+
+    final List<String> muscleGroupFilter = ['TODOS', ...allMuscleGroups];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0A0E1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            String stripAccents(String s) {
+              return s
+                  .replaceAll('Á', 'A').replaceAll('É', 'E')
+                  .replaceAll('Í', 'I').replaceAll('Ó', 'O')
+                  .replaceAll('Ú', 'U').replaceAll('Ü', 'U')
+                  .replaceAll('Ñ', 'N');
+            }
+
+            final filtered = _globalExerciseList.where((ex) {
+              final matchesSearch = searchQuery.isEmpty ||
+                  stripAccents(ex.toUpperCase()).contains(stripAccents(searchQuery.toUpperCase()));
+              final matchesGroup = selectedGroup == 'TODOS' ||
+                  _getMuscleGroupForExercise(ex) == selectedGroup;
+              return matchesSearch && matchesGroup;
+            }).toList();
+
+            return SizedBox(
+              height: MediaQuery.of(context).size.height * 0.85,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(LucideIcons.database, color: _accentColor, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              "BASE DE DATOS",
+                              style: TextStyle(
+                                color: _accentColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              "${filtered.length} ejercicios",
+                              style: const TextStyle(color: Colors.white24, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          autofocus: true,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Buscar ejercicio...',
+                            hintStyle: const TextStyle(color: Colors.white24),
+                            prefixIcon: const Icon(LucideIcons.search, size: 16, color: Colors.white24),
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: 0.05),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          ),
+                          onChanged: (v) => setSheetState(() => searchQuery = v),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 36,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: muscleGroupFilter.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 8),
+                            itemBuilder: (context, i) {
+                              final g = muscleGroupFilter[i];
+                              final isSelected = selectedGroup == g;
+                              return ChoiceChip(
+                                label: Text(g, style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : Colors.white54)),
+                                selected: isSelected,
+                                selectedColor: _accentColor,
+                                backgroundColor: Colors.white.withValues(alpha: 0.05),
+                                onSelected: (_) => setSheetState(() => selectedGroup = g),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No se encontraron ejercicios',
+                              style: TextStyle(color: Colors.white24),
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                              childAspectRatio: 0.8,
+                            ),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, i) {
+                              final ex = filtered[i];
+                              final imgUrl = exerciseImages[ex];
+                              final alreadyAdded = _exerciseDb[group]?.contains(ex) ?? false;
+                              return GestureDetector(
+                                onTap: alreadyAdded ? null : () {
+                                  setState(() {
+                                    _exerciseDb[group] ??= [];
+                                    if (!_exerciseDb[group]!.contains(ex)) {
+                                      _exerciseDb[group]!.add(ex);
+                                    }
+                                    _saveConfig();
+                                  });
+                                  Navigator.pop(ctx);
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: alreadyAdded
+                                        ? Colors.green.withValues(alpha: 0.1)
+                                        : Colors.white.withValues(alpha: 0.03),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: alreadyAdded
+                                          ? Colors.green.withValues(alpha: 0.3)
+                                          : Colors.white.withValues(alpha: 0.08),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(6),
+                                          child: imgUrl != null
+                                              ? SvgPicture.network(
+                                                  imgUrl,
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (_, __, ___) => Icon(
+                                                    LucideIcons.dumbbell,
+                                                    size: 24,
+                                                    color: Colors.white24,
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  LucideIcons.dumbbell,
+                                                  size: 24,
+                                                  color: Colors.white24,
+                                                ),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                                        child: Text(
+                                          ex,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 7,
+                                            fontWeight: FontWeight.bold,
+                                            color: alreadyAdded ? Colors.green : Colors.white54,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _getMuscleGroupForExercise(String exercise) {
+    final upper = exercise.toUpperCase();
+    if (upper.contains('PRESS') || upper.contains('APERTURA') || upper.contains('PULL OVER') || upper.contains('PEC DECK') || upper.contains('CROSS OVER')) return 'PECHO';
+    if (upper.contains('JALÓN') || upper.contains('REMO') || upper.contains('DOMINADA') || upper.contains('REMADOR') || upper.contains('SERRATO')) return 'ESPALDA';
+    if (upper.contains('LATERAL') || upper.contains('FRONTAL') || upper.contains('FACE') || upper.contains('PÁJARO') || upper.contains('MILITAR') || upper.contains('UPRIGHT') || upper.contains('ARNOLD') || upper.contains('ELEVACIÓN')) return 'HOMBROS';
+    if (upper.contains('CURL') || upper.contains('PREACHER')) return 'BÍCEPS';
+    if (upper.contains('EXTENSIÓN') || upper.contains('TRICEPS') || upper.contains('PRESS FRANCES') || upper.contains('FONDOS') || upper.contains('SKULL') || upper.contains('KICKBACK') || upper.contains('PRESSESS')) return 'TRÍCEPS';
+    if (upper.contains('SENTADILLA') || upper.contains('PRESS DE PIERNAS') || upper.contains('PENCHA') || upper.contains('PESO MUERTO')) return 'PIERNAS';
+    if (upper.contains('FEMORAL') || upper.contains('NORDIC') || upper.contains('BUCHILLAS')) return 'PIERNAS';
+    if (upper.contains('HIP THRUST') || upper.contains('ZANCADA') || upper.contains('STEP UP') || upper.contains('ABDUCCIÓN') || upper.contains('GLUTE') || upper.contains('PATADA')) return 'PIERNAS';
+    if (upper.contains('PANTORRILLA') || upper.contains('ELEVACIÓN')) return 'PIERNAS';
+    if (upper.contains('ADUCTOR') || upper.contains('ABDUCTOR')) return 'PIERNAS';
+    if (upper.contains('CRUNCH') || upper.contains('PLANCHAS') || upper.contains('RUSSIAN') || upper.contains('LUMBAR') || upper.contains('AB') || upper.contains('LEG RAISE') || upper.contains('HOLLOW') || upper.contains('FRENCH') || upper.contains('MOUNTAIN') || upper.contains('DEAD BUG') || upper.contains('BIRD') || upper.contains('RKC')) return 'CENTRO';
+    return 'OTROS';
   }
 
   void _promptAddGroup() {
@@ -5037,8 +5268,10 @@ class _MainScreenState extends State<MainScreen>
                 height: 45,
                 child: ReorderableListView(
                   scrollDirection: Axis.horizontal,
-                  onReorderItem: (oldIndex, newIndex) =>
-                      _reorderExercises(_activeWorkoutType, oldIndex, newIndex),
+                  onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) newIndex--;
+                        _reorderExercises(_activeWorkoutType, oldIndex, newIndex);
+                      },
                   children: activeExercises
                       .map(
                         (ex) => GestureDetector(
@@ -5945,18 +6178,11 @@ class _MainScreenState extends State<MainScreen>
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: _cardColor,
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(15),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.05),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
                   child: ExpansionTile(
                     maintainState: true,
@@ -6523,11 +6749,8 @@ class _MainScreenState extends State<MainScreen>
               16,
               MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 36,
             ),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0E1A).withValues(alpha: 0.95),
-              border: const Border(
-                top: BorderSide(color: Colors.white10, width: 0.3),
-              ),
+            decoration: const BoxDecoration(
+              color: Colors.transparent,
             ),
             child: SafeArea(
               top: false,
